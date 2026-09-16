@@ -49,7 +49,7 @@ jobs:
 
       - name: Smoke test - Python stack
         run: |
-          docker run --rm ${IMAGE}:${{ github.sha }} bash -lc '
+          docker run --rm ${IMAGE}:${{ github.sha }} bash -c '
             set -e
             python3 --version
             graphrag --version
