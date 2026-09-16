@@ -1,8 +1,8 @@
 # =========================
 # Microsoft Agent Framework
 # =========================
-agent-framework==1.0.0rc2
-agent-framework-azure-ai==1.0.0b251001
+agent-framework==1.18.0
+agent-framework-azure-ai==1.0.0rc6
 
 # =========================
 # GraphRAG (pinned)
