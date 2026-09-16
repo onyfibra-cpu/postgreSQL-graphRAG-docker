@@ -71,7 +71,8 @@ jobs:
           docker rm -f pg
 
       - name: Image size
-        run: docker image inspect ${IMAGE}:${{ github.sha }} --format 'Size: {{.Size}} bytes'
+        run: |
+          docker image inspect ${IMAGE}:${{ github.sha }} --format '{{.Size}}' | awk '{printf "image size: %.2f GB\n", $1/1024/1024/1024}'
 
       - name: Push image to GHCR
         run: |
