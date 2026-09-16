@@ -52,7 +52,8 @@ jobs:
           docker run --rm ${IMAGE}:${{ github.sha }} bash -c '
             set -e
             python3 --version
-            graphrag --version
+            python3 -c "from importlib.metadata import version; print(\"graphrag\", version(\"graphrag\"))"
+            graphrag --help >/dev/null
             python3 -c "import graphrag, mcp, psycopg2, pgvector, pandas, pyarrow; print(\"python imports ok\")"
             python3 -c "import agent_framework; print(\"agent_framework\", getattr(agent_framework, \"__version__\", \"?\"))"
           '
