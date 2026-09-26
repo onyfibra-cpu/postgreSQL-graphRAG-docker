@@ -1,0 +1,48 @@
+{
+  "id": "conector-graphrag",
+  "name": "Conector GraphRAG",
+  "description": "Consulta a base de conhecimento central (LightRAG: grafo + vetores) da empresa configurada.",
+  "version": "0.1.0",
+  "categories": ["integrations"],
+  "activation": { "onStartup": true },
+  "contracts": { "tools": ["base_conhecimento"] },
+  "toolMetadata": {
+    "base_conhecimento": {
+      "profiles": ["coding", "messaging", "full"],
+      "configSignals": [
+        {
+          "rootPath": "plugins.entries.conector-graphrag.config",
+          "required": ["baseUrl", "apiKey"]
+        }
+      ]
+    }
+  },
+  "uiHints": {
+    "baseUrl": { "label": "URL da instância LightRAG", "placeholder": "https://dominio/empresa1" },
+    "apiKey": { "label": "Chave de API (X-API-Key)", "sensitive": true },
+    "timeoutMs": { "label": "Timeout por chamada (ms)", "advanced": true }
+  },
+  "configContracts": {
+    "secretInputs": { "paths": [{ "path": "apiKey", "expected": "string" }] }
+  },
+  "skills": ["skills/conector-graphrag"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["baseUrl", "apiKey"],
+    "properties": {
+      "baseUrl": {
+        "type": "string",
+        "description": "URL da instância LightRAG desta empresa (ex.: https://dominio/empresa1 ou http://ip-interno:9621)."
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "Chave de API da instância (header X-API-Key). Recomendado: SecretRef via `openclaw secrets store`."
+      },
+      "timeoutMs": {
+        "type": "number",
+        "description": "Timeout por chamada em ms (padrão 60000)."
+      }
+    }
+  }
+}
