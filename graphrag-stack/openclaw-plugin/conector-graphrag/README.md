@@ -13,8 +13,11 @@ Uma única facade, `base_conhecimento`:
 | `acao` | O que faz | Endpoint LightRAG |
 |---|---|---|
 | `consultar` | Responde `pergunta` via grafo + vetores (`modo` padrão `mix`; `com_referencias` inclui fontes) | `POST /query` |
-| `saude` | Verifica se o serviço está no ar | `GET /health` |
-| `indexacao` | Status do processamento de documentos | `GET /documents/pipeline_status` |
+| `saude` | Verifica se o serviço está no ar (resposta em `{saude: ...}`) | `GET /health` |
+| `indexacao` | Status do processamento de documentos (resposta em `{indexacao: ...}`) | `GET /documents/pipeline_status` |
+
+As respostas cruas do LightRAG vêm embrulhadas porque `status` no topo do
+`details` é nome reservado na avaliação de resultado do OpenClaw.
 
 A skill embutida (`skills/conector-graphrag`) instrui o agente a consultar
 a base antes de responder dúvida de procedimento/produto/norma e a não
@@ -32,7 +35,7 @@ npm test
 
 # Instalar no host
 npm pack
-openclaw plugins install npm-pack:./openclaw-plugin-conector-graphrag-0.1.0.tgz
+openclaw plugins install npm-pack:./openclaw-plugin-conector-graphrag-0.1.1.tgz
 ```
 
 > `openclaw plugins build` deve rodar num host com OpenClaw instalado.

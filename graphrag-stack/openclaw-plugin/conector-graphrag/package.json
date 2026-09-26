@@ -1,6 +1,6 @@
 {
   "name": "openclaw-plugin-conector-graphrag",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Plugin OpenClaw: consulta a base de conhecimento central LightRAG (GraphRAG) da empresa configurada.",
   "type": "module",
   "license": "MIT",
@@ -16,11 +16,26 @@
     "test": "vitest run"
   },
   "openclaw": {
-    "extensions": ["./dist/index.js"],
-    "install": { "minHostVersion": ">=2026.7.1" }
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.7.1"
+    },
+    "install": {
+      "minHostVersion": ">=2026.7.1"
+    }
   },
   "dependencies": {
     "typebox": "^1.0.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.7.1"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "typescript": "^5.6.0",

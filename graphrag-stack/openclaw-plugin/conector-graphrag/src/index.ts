@@ -55,10 +55,14 @@ function resolverConfig(config: ConectorConfig): {
 async function chamarApi(
   cfg: { baseUrl: string; apiKey: string; timeoutMs: number },
   caminho: string,
-  init?: { method?: string; body?: unknown },
+  init?: { method?: string; body?: unknown; sinalExterno?: AbortSignal },
 ): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
+  // Combina o timeout local com o cancelamento do host, quando fornecido.
+  const sinal = init?.sinalExterno
+    ? AbortSignal.any([controller.signal, init.sinalExterno])
+    : controller.signal;
   try {
     const resposta = await fetch(`${cfg.baseUrl}${caminho}`, {
       method: init?.method ?? "GET",
@@ -67,7 +71,7 @@ async function chamarApi(
         ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
       body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-      signal: controller.signal,
+      signal: sinal,
     });
     if (!resposta.ok) {
       // Nunca inclui a chave; corpo truncado para não inundar o contexto.
@@ -80,6 +84,9 @@ async function chamarApi(
     return await resposta.json();
   } catch (erro) {
     if (erro instanceof Error && erro.name === "AbortError") {
+      if (init?.sinalExterno?.aborted) {
+        throw erro; // cancelamento pedido pelo host, não timeout nosso
+      }
       throw new Error(
         `conector-graphrag: tempo esgotado (${cfg.timeoutMs} ms) chamando ${caminho}. ` +
           "Verifique se a instância LightRAG está no ar e acessível deste servidor.",
@@ -150,8 +157,14 @@ export default defineToolPlugin({
         },
         { additionalProperties: false },
       ),
-      execute: async (params: FacadeParams, config: unknown) => {
+      execute: async (
+        params: FacadeParams,
+        config: unknown,
+        context?: { signal?: AbortSignal },
+      ) => {
+        context?.signal?.throwIfAborted();
         const cfg = resolverConfig(config as ConectorConfig);
+        const sinalExterno = context?.signal;
         switch (params.acao) {
           case "consultar": {
             const pergunta = params.pergunta?.trim();
@@ -170,16 +183,25 @@ export default defineToolPlugin({
             const dados = (await chamarApi(cfg, "/query", {
               method: "POST",
               body: corpo,
+              sinalExterno,
             })) as { response?: string; references?: unknown[] };
             return {
               resposta: dados.response ?? "",
               ...(dados.references ? { referencias: dados.references } : {}),
             };
           }
+          // As respostas cruas do LightRAG vão embrulhadas numa chave própria:
+          // /health traz "status" no topo, que é nome reservado na avaliação
+          // de resultado do OpenClaw (status/ok/success/error/...) e marcaria
+          // a chamada como falha.
           case "saude":
-            return await chamarApi(cfg, "/health");
+            return { saude: await chamarApi(cfg, "/health", { sinalExterno }) };
           case "indexacao":
-            return await chamarApi(cfg, "/documents/pipeline_status");
+            return {
+              indexacao: await chamarApi(cfg, "/documents/pipeline_status", {
+                sinalExterno,
+              }),
+            };
         }
       },
     }),

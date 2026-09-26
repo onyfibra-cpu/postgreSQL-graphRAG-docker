@@ -6,7 +6,11 @@ import plugin from "../src/index.js";
 type ToolSpec = {
   name: string;
   description: string;
-  execute: (params: Record<string, unknown>, config: unknown) => Promise<unknown>;
+  execute: (
+    params: Record<string, unknown>,
+    config: unknown,
+    context?: { signal?: AbortSignal },
+  ) => Promise<unknown>;
 };
 
 const def = plugin as unknown as {
@@ -106,23 +110,38 @@ describe("acao=consultar", () => {
 });
 
 describe("demais ações", () => {
-  it("saude chama GET {base}/health", async () => {
+  it("saude chama GET {base}/health e embrulha a resposta (sem 'status' no topo)", async () => {
     const fetchMock = vi.fn(async () => respostaJson(200, { status: "healthy" }));
     vi.stubGlobal("fetch", fetchMock);
     const resultado = await facade.execute({ acao: "saude" }, configOk);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://rag.example.test/empresa1/health");
     expect(init.method).toBe("GET");
-    expect(resultado).toEqual({ status: "healthy" });
+    // "status" é nome reservado na avaliação de resultado do OpenClaw:
+    // no topo do details, "healthy" marcaria a chamada como falha.
+    expect(resultado).toEqual({ saude: { status: "healthy" } });
+    expect(Object.keys(resultado as object)).not.toContain("status");
   });
 
-  it("indexacao chama GET {base}/documents/pipeline_status", async () => {
+  it("indexacao chama GET {base}/documents/pipeline_status e embrulha", async () => {
     const fetchMock = vi.fn(async () => respostaJson(200, { busy: false }));
     vi.stubGlobal("fetch", fetchMock);
-    await facade.execute({ acao: "indexacao" }, configOk);
+    const resultado = await facade.execute({ acao: "indexacao" }, configOk);
     expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe(
       "https://rag.example.test/empresa1/documents/pipeline_status",
     );
+    expect(resultado).toEqual({ indexacao: { busy: false } });
+  });
+
+  it("respeita o cancelamento do host (context.signal já abortado)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const controlador = new AbortController();
+    controlador.abort();
+    await expect(
+      facade.execute({ acao: "saude" }, configOk, { signal: controlador.signal }),
+    ).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

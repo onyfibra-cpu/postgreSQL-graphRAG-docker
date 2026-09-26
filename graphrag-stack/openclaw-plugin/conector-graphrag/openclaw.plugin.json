@@ -2,34 +2,70 @@
   "id": "conector-graphrag",
   "name": "Conector GraphRAG",
   "description": "Consulta a base de conhecimento central (LightRAG: grafo + vetores) da empresa configurada.",
-  "version": "0.1.0",
-  "categories": ["integrations"],
-  "activation": { "onStartup": true },
-  "contracts": { "tools": ["base_conhecimento"] },
+  "version": "0.1.1",
+  "categories": [
+    "integrations"
+  ],
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "base_conhecimento"
+    ]
+  },
   "toolMetadata": {
     "base_conhecimento": {
-      "profiles": ["coding", "messaging", "full"],
+      "profiles": [
+        "coding",
+        "messaging",
+        "full"
+      ],
       "configSignals": [
         {
           "rootPath": "plugins.entries.conector-graphrag.config",
-          "required": ["baseUrl", "apiKey"]
+          "required": [
+            "baseUrl",
+            "apiKey"
+          ]
         }
       ]
     }
   },
   "uiHints": {
-    "baseUrl": { "label": "URL da instância LightRAG", "placeholder": "https://dominio/empresa1" },
-    "apiKey": { "label": "Chave de API (X-API-Key)", "sensitive": true },
-    "timeoutMs": { "label": "Timeout por chamada (ms)", "advanced": true }
+    "baseUrl": {
+      "label": "URL da instância LightRAG",
+      "placeholder": "https://dominio/empresa1"
+    },
+    "apiKey": {
+      "label": "Chave de API (X-API-Key)",
+      "sensitive": true
+    },
+    "timeoutMs": {
+      "label": "Timeout por chamada (ms)",
+      "advanced": true
+    }
   },
   "configContracts": {
-    "secretInputs": { "paths": [{ "path": "apiKey", "expected": "string" }] }
+    "secretInputs": {
+      "paths": [
+        {
+          "path": "apiKey",
+          "expected": "string"
+        }
+      ]
+    }
   },
-  "skills": ["skills/conector-graphrag"],
+  "skills": [
+    "skills/conector-graphrag"
+  ],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["baseUrl", "apiKey"],
+    "required": [
+      "baseUrl",
+      "apiKey"
+    ],
     "properties": {
       "baseUrl": {
         "type": "string",
