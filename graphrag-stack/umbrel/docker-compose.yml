@@ -1,0 +1,155 @@
+# GraphRAG interno — Umbrel / Dell R720, rede local.
+# Mesmo stack da Hostinger, sem Traefik: cada empresa sai numa porta da LAN
+# (9621/9622/9623). NÃO faça port-forward destas portas no roteador; para
+# acesso externo use VPN (Tailscale já roda bem no Umbrel).
+
+x-lightrag-common: &lightrag-common
+  image: ghcr.io/hkuds/lightrag:latest
+  restart: unless-stopped
+  depends_on:
+    neo4j:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+    qdrant:
+      condition: service_started
+  networks:
+    - internal
+
+x-lightrag-env: &lightrag-env
+  HOST: 0.0.0.0
+  PORT: "9621"
+  WORKING_DIR: /app/data/rag_storage
+  INPUT_DIR: /app/data/inputs
+  SUMMARY_LANGUAGE: Portuguese
+  ENABLE_LLM_CACHE: "true"
+  MAX_ASYNC_LLM: "${MAX_ASYNC_LLM:-2}"
+  MAX_PARALLEL_INSERT: "2"
+  LLM_BINDING: openai
+  LLM_BINDING_HOST: https://api.minimax.io/v1
+  LLM_MODEL: "${LLM_MODEL:-MiniMax-M3}"
+  EMBEDDING_BINDING: openai
+  EMBEDDING_BINDING_HOST: https://api.openai.com/v1
+  EMBEDDING_MODEL: text-embedding-3-small
+  EMBEDDING_DIM: "1536"
+  EMBEDDING_BINDING_API_KEY: "${OPENAI_API_KEY:?defina OPENAI_API_KEY no .env}"
+  LIGHTRAG_GRAPH_STORAGE: Neo4JStorage
+  LIGHTRAG_VECTOR_STORAGE: QdrantVectorDBStorage
+  LIGHTRAG_KV_STORAGE: PGKVStorage
+  LIGHTRAG_DOC_STATUS_STORAGE: PGDocStatusStorage
+  NEO4J_URI: neo4j://neo4j:7687
+  NEO4J_USERNAME: "${NEO4J_USERNAME:?}"
+  NEO4J_PASSWORD: "${NEO4J_PASSWORD:?}"
+  QDRANT_URL: http://qdrant:6333
+  QDRANT_API_KEY: "${QDRANT_API_KEY:?}"
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: "${POSTGRES_USER:?}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?}"
+  POSTGRES_DATABASE: "${POSTGRES_DATABASE:-lightrag}"
+
+services:
+  neo4j:
+    image: neo4j:5-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: "${NEO4J_USERNAME:?}/${NEO4J_PASSWORD:?}"
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: "${NEO4J_HEAP_MAX:-4g}"
+      NEO4J_server_memory_pagecache_size: "${NEO4J_PAGECACHE:-1g}"
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__API_KEY: "${QDRANT_API_KEY:?}"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - internal
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?}"
+      POSTGRES_DB: "${POSTGRES_DATABASE:-lightrag}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?} -d ${POSTGRES_DATABASE:-lightrag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  lightrag-empresa1:
+    <<: *lightrag-common
+    ports:
+      - "${LAN_BIND:-0.0.0.0}:9621:9621"
+    environment:
+      <<: *lightrag-env
+      WORKSPACE: empresa1
+      LLM_BINDING_API_KEY: "${MINIMAX_KEY_EMPRESA1:?}"
+      LIGHTRAG_API_KEY: "${LIGHTRAG_API_KEY_EMPRESA1:?}"
+      AUTH_ACCOUNTS: "${AUTH_ACCOUNTS_EMPRESA1:?}"
+      TOKEN_SECRET: "${TOKEN_SECRET_EMPRESA1:?}"
+    volumes:
+      - empresa1_storage:/app/data/rag_storage
+      - empresa1_inputs:/app/data/inputs
+
+  lightrag-empresa2:
+    <<: *lightrag-common
+    ports:
+      - "${LAN_BIND:-0.0.0.0}:9622:9621"
+    environment:
+      <<: *lightrag-env
+      WORKSPACE: empresa2
+      LLM_BINDING_API_KEY: "${MINIMAX_KEY_EMPRESA2:?}"
+      LIGHTRAG_API_KEY: "${LIGHTRAG_API_KEY_EMPRESA2:?}"
+      AUTH_ACCOUNTS: "${AUTH_ACCOUNTS_EMPRESA2:?}"
+      TOKEN_SECRET: "${TOKEN_SECRET_EMPRESA2:?}"
+    volumes:
+      - empresa2_storage:/app/data/rag_storage
+      - empresa2_inputs:/app/data/inputs
+
+  lightrag-empresa3:
+    <<: *lightrag-common
+    ports:
+      - "${LAN_BIND:-0.0.0.0}:9623:9621"
+    environment:
+      <<: *lightrag-env
+      WORKSPACE: empresa3
+      LLM_BINDING_API_KEY: "${MINIMAX_KEY_EMPRESA3:?}"
+      LIGHTRAG_API_KEY: "${LIGHTRAG_API_KEY_EMPRESA3:?}"
+      AUTH_ACCOUNTS: "${AUTH_ACCOUNTS_EMPRESA3:?}"
+      TOKEN_SECRET: "${TOKEN_SECRET_EMPRESA3:?}"
+    volumes:
+      - empresa3_storage:/app/data/rag_storage
+      - empresa3_inputs:/app/data/inputs
+
+networks:
+  internal:
+
+volumes:
+  neo4j_data:
+  qdrant_data:
+  postgres_data:
+  empresa1_storage:
+  empresa1_inputs:
+  empresa2_storage:
+  empresa2_inputs:
+  empresa3_storage:
+  empresa3_inputs:

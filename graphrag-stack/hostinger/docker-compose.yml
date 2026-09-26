@@ -1,0 +1,224 @@
+# GraphRAG central — LightRAG + Neo4j + Qdrant + Postgres atrás de Traefik.
+# Um subdomínio (Hostinger) roteia as 3 empresas por prefixo de caminho:
+#   https://SEU_DOMINIO/empresa1  -> instância com WORKSPACE=empresa1
+#   https://SEU_DOMINIO/empresa2  -> instância com WORKSPACE=empresa2
+#   https://SEU_DOMINIO/empresa3  -> instância com WORKSPACE=empresa3
+# Bancos de dados NUNCA publicam porta no host; só o Traefik expõe 80/443.
+
+x-lightrag-common: &lightrag-common
+  image: ghcr.io/hkuds/lightrag:latest
+  restart: unless-stopped
+  depends_on:
+    neo4j:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+    qdrant:
+      condition: service_started
+
+x-lightrag-env: &lightrag-env
+  HOST: 0.0.0.0
+  PORT: "9621"
+  WORKING_DIR: /app/data/rag_storage
+  INPUT_DIR: /app/data/inputs
+  SUMMARY_LANGUAGE: Portuguese
+  ENABLE_LLM_CACHE: "true"
+  # Concorrência baixa de propósito: a cota MiniMax é compartilhada com o
+  # OpenClaw da mesma empresa (plano limita 3-4 agentes simultâneos).
+  MAX_ASYNC_LLM: "${MAX_ASYNC_LLM:-2}"
+  MAX_PARALLEL_INSERT: "2"
+  # LLM: MiniMax via endpoint compatível com OpenAI. A chave é a sk-cp
+  # (Chave de Assinatura) da conta da empresa — desconta do Token Plan.
+  LLM_BINDING: openai
+  LLM_BINDING_HOST: https://api.minimax.io/v1
+  LLM_MODEL: "${LLM_MODEL:-MiniMax-M3}"
+  # Embeddings: OpenAI (a MiniMax não cobre embeddings). Custo ~US$0,02/M tokens.
+  EMBEDDING_BINDING: openai
+  EMBEDDING_BINDING_HOST: https://api.openai.com/v1
+  EMBEDDING_MODEL: text-embedding-3-small
+  EMBEDDING_DIM: "1536"
+  EMBEDDING_BINDING_API_KEY: "${OPENAI_API_KEY:?defina OPENAI_API_KEY no .env}"
+  # Backends: grafo no Neo4j, vetores no Qdrant, KV/status no Postgres.
+  # O isolamento entre empresas é o WORKSPACE (label/payload/coluna).
+  LIGHTRAG_GRAPH_STORAGE: Neo4JStorage
+  LIGHTRAG_VECTOR_STORAGE: QdrantVectorDBStorage
+  LIGHTRAG_KV_STORAGE: PGKVStorage
+  LIGHTRAG_DOC_STATUS_STORAGE: PGDocStatusStorage
+  NEO4J_URI: neo4j://neo4j:7687
+  NEO4J_USERNAME: "${NEO4J_USERNAME:?}"
+  NEO4J_PASSWORD: "${NEO4J_PASSWORD:?}"
+  QDRANT_URL: http://qdrant:6333
+  QDRANT_API_KEY: "${QDRANT_API_KEY:?}"
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: "${POSTGRES_USER:?}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?}"
+  POSTGRES_DATABASE: "${POSTGRES_DATABASE:-lightrag}"
+
+services:
+  traefik:
+    image: traefik:v3
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL:?}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - --api.dashboard=false
+      - --log.level=INFO
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+      - ./traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+    networks:
+      - proxy
+
+  neo4j:
+    image: neo4j:5-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: "${NEO4J_USERNAME:?}/${NEO4J_PASSWORD:?}"
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: "${NEO4J_HEAP_MAX:-2g}"
+      NEO4J_server_memory_pagecache_size: "${NEO4J_PAGECACHE:-512m}"
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__API_KEY: "${QDRANT_API_KEY:?}"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - internal
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?}"
+      POSTGRES_DB: "${POSTGRES_DATABASE:-lightrag}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?} -d ${POSTGRES_DATABASE:-lightrag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  lightrag-empresa1:
+    <<: *lightrag-common
+    environment:
+      <<: *lightrag-env
+      WORKSPACE: empresa1
+      LIGHTRAG_API_PREFIX: /empresa1
+      LLM_BINDING_API_KEY: "${MINIMAX_KEY_EMPRESA1:?}"
+      LIGHTRAG_API_KEY: "${LIGHTRAG_API_KEY_EMPRESA1:?}"
+      AUTH_ACCOUNTS: "${AUTH_ACCOUNTS_EMPRESA1:?}"
+      TOKEN_SECRET: "${TOKEN_SECRET_EMPRESA1:?}"
+    volumes:
+      - empresa1_storage:/app/data/rag_storage
+      - empresa1_inputs:/app/data/inputs
+    networks:
+      - proxy
+      - internal
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=graphrag_proxy
+      - traefik.http.routers.empresa1.rule=Host(`${PUBLIC_DOMAIN}`) && PathPrefix(`/empresa1`)
+      - traefik.http.routers.empresa1.entrypoints=websecure
+      - traefik.http.routers.empresa1.tls.certresolver=le
+      - traefik.http.routers.empresa1.middlewares=empresa1-strip,secure-headers@file,ratelimit@file
+      - traefik.http.middlewares.empresa1-strip.stripprefix.prefixes=/empresa1
+      - traefik.http.services.empresa1.loadbalancer.server.port=9621
+
+  lightrag-empresa2:
+    <<: *lightrag-common
+    environment:
+      <<: *lightrag-env
+      WORKSPACE: empresa2
+      LIGHTRAG_API_PREFIX: /empresa2
+      LLM_BINDING_API_KEY: "${MINIMAX_KEY_EMPRESA2:?}"
+      LIGHTRAG_API_KEY: "${LIGHTRAG_API_KEY_EMPRESA2:?}"
+      AUTH_ACCOUNTS: "${AUTH_ACCOUNTS_EMPRESA2:?}"
+      TOKEN_SECRET: "${TOKEN_SECRET_EMPRESA2:?}"
+    volumes:
+      - empresa2_storage:/app/data/rag_storage
+      - empresa2_inputs:/app/data/inputs
+    networks:
+      - proxy
+      - internal
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=graphrag_proxy
+      - traefik.http.routers.empresa2.rule=Host(`${PUBLIC_DOMAIN}`) && PathPrefix(`/empresa2`)
+      - traefik.http.routers.empresa2.entrypoints=websecure
+      - traefik.http.routers.empresa2.tls.certresolver=le
+      - traefik.http.routers.empresa2.middlewares=empresa2-strip,secure-headers@file,ratelimit@file
+      - traefik.http.middlewares.empresa2-strip.stripprefix.prefixes=/empresa2
+      - traefik.http.services.empresa2.loadbalancer.server.port=9621
+
+  lightrag-empresa3:
+    <<: *lightrag-common
+    environment:
+      <<: *lightrag-env
+      WORKSPACE: empresa3
+      LIGHTRAG_API_PREFIX: /empresa3
+      LLM_BINDING_API_KEY: "${MINIMAX_KEY_EMPRESA3:?}"
+      LIGHTRAG_API_KEY: "${LIGHTRAG_API_KEY_EMPRESA3:?}"
+      AUTH_ACCOUNTS: "${AUTH_ACCOUNTS_EMPRESA3:?}"
+      TOKEN_SECRET: "${TOKEN_SECRET_EMPRESA3:?}"
+    volumes:
+      - empresa3_storage:/app/data/rag_storage
+      - empresa3_inputs:/app/data/inputs
+    networks:
+      - proxy
+      - internal
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=graphrag_proxy
+      - traefik.http.routers.empresa3.rule=Host(`${PUBLIC_DOMAIN}`) && PathPrefix(`/empresa3`)
+      - traefik.http.routers.empresa3.entrypoints=websecure
+      - traefik.http.routers.empresa3.tls.certresolver=le
+      - traefik.http.routers.empresa3.middlewares=empresa3-strip,secure-headers@file,ratelimit@file
+      - traefik.http.middlewares.empresa3-strip.stripprefix.prefixes=/empresa3
+      - traefik.http.services.empresa3.loadbalancer.server.port=9621
+
+networks:
+  proxy:
+    name: graphrag_proxy
+  internal:
+    internal: true
+
+volumes:
+  neo4j_data:
+  qdrant_data:
+  postgres_data:
+  empresa1_storage:
+  empresa1_inputs:
+  empresa2_storage:
+  empresa2_inputs:
+  empresa3_storage:
+  empresa3_inputs:

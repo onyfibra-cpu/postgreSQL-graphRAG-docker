@@ -1,0 +1,5 @@
+# Segredos e estado local — nunca commitar
+.env
+*/letsencrypt/
+*.pem
+*.key

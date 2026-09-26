@@ -1,0 +1,26 @@
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: no-referrer
+        customResponseHeaders:
+          Server: ""
+          X-Powered-By: ""
+
+    ratelimit:
+      rateLimit:
+        average: 20
+        burst: 60
+        period: 1s
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true
