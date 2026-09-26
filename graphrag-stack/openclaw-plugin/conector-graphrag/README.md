@@ -1,6 +1,6 @@
 # conector-graphrag
 
-Plugin OpenClaw (2026.7.1+) que dá ao agente acesso à base de conhecimento
+Plugin OpenClaw (2026.9.4+) que dá ao agente acesso à base de conhecimento
 central em LightRAG (GraphRAG: grafo + vetores). White-label: o mesmo
 pacote é instalado em qualquer tenant; o que muda é a config (`baseUrl` +
 `apiKey` da instância daquela empresa) — nenhum dado de empresa viaja no
