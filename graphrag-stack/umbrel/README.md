@@ -9,8 +9,39 @@ interna**. Cada empresa sai numa porta da LAN:
 | 2 | `http://IP_DO_SERVIDOR:9622/webui` | `http://IP_DO_SERVIDOR:9622/...` |
 | 3 | `http://IP_DO_SERVIDOR:9623/webui` | `http://IP_DO_SERVIDOR:9623/...` |
 
-O Umbrel não instala compose avulso pela loja, mas o host roda Docker —
-basta subir via SSH:
+## Como instalar
+
+Três caminhos, do recomendado ao frágil (fonte: suporte oficial da
+Umbrel, "Running custom Docker containers", fev/2026):
+
+**1. Portainer (recomendado para o piloto).** É o caminho oficial da
+Umbrel para compose customizado: instale **Portainer** pela App Store,
+abra, crie uma *Stack* colando o `docker-compose.yml` desta pasta e
+preencha as variáveis do `.env.example` na seção *Environment variables*
+da stack. Este compose já cumpre as exigências oficiais: **só volumes
+nomeados** (bind mount perde dados quando o Portainer atualiza) e
+`restart: unless-stopped`. Duas ressalvas do próprio suporte:
+
+- **Desinstalar o Portainer apaga todos os containers e volumes criados
+  por ele** — com Neo4j/Postgres de 3 empresas dentro, mantenha backup
+  dos volumes e nunca desinstale sem exportar.
+- Confira conflito de portas com outros apps (9621-9623 não conflitam
+  com o painel do Umbrel, que usa 80/8080).
+
+**2. Community App Store própria (recomendado para a instalação
+definitiva).** Empacotar este stack no template
+`getumbrel/umbrel-community-app-store` (repo GitHub com
+`umbrel-app.yml` + compose no formato Umbrel, com `app_proxy`) e
+adicionar em App Store → menu ⋯ → Community App Stores. O stack vira um
+app de verdade: ícone no painel, dados no diretório gerenciado pelo
+umbrelOS, sobrevive a atualizações do OS e não depende do Portainer.
+Candidato natural para hospedar a store: o repositório
+`-umbrel-painel-ony`.
+
+**3. SSH + `docker compose` direto no host.** Funciona (o host roda
+Docker), mas é não-suportado no umbrelOS 1.x+ — há relatos na
+comunidade de compose avulso quebrando após atualização do OS. Use só
+para depuração rápida:
 
 ```bash
 ssh umbrel@IP_DO_SERVIDOR
@@ -21,7 +52,7 @@ nano .env            # preencher chaves e senhas
 docker compose up -d
 ```
 
-As portas do Umbrel (80/8080 do painel) não conflitam com 9621-9623.
+Em qualquer caminho, o acesso é `umbrel.local:9621` (ou o IP da LAN).
 
 ## Segurança
 
